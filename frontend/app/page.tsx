@@ -33,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ArrowLeftIcon } from "lucide-react";
 
 export default function Home() {
   const { user, token, isLoading: authLoading, logout } = useAuth();
@@ -72,7 +73,6 @@ export default function Home() {
   const [showFileUploadForm, setShowFileUploadForm] = useState(false);
   const [showFolderForm, setShowFolderForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSearchMode, setIsSearchMode] = useState(false);
   const [viewItem, setViewItem] = useState<Document | Folder | null>(null);
   const [viewItemType, setViewItemType] = useState<
     "document" | "folder" | null
@@ -99,6 +99,9 @@ export default function Home() {
       const limit = params.limit ?? pagination.limit;
       // Calculate offset from page if not explicitly provided
       const offset = params.offset ?? (page - 1) * limit;
+      // Use search from params or current searchQuery state
+      const search =
+        params.search !== undefined ? params.search : searchQuery || undefined;
 
       const [fileListData, allFoldersData] = await Promise.all([
         getFileList({
@@ -106,7 +109,7 @@ export default function Home() {
           page,
           limit,
           offset,
-          search: searchQuery || undefined,
+          search,
         }),
         getFolders(), // All folders for dropdowns
       ]);
@@ -126,22 +129,33 @@ export default function Home() {
     setCurrentFolderId(folder.id);
     setPagination((prev) => ({ ...prev, page: 1, offset: 0 }));
     setSelectedItems(new Set());
-    // Update URL with folder slug
-    router.push(`/?folder=${folder.id}`, { scroll: false });
-    loadData(folder.id, { page: 1, offset: 0 });
+    // Update URL with folder, preserving search if present
+    const params = new URLSearchParams();
+    params.set("folder", folder.id.toString());
+    const search = searchParams.get("search");
+    if (search) {
+      params.set("search", search);
+    }
+    router.push(`/?${params.toString()}`, { scroll: false });
+    loadData(folder.id, { page: 1, offset: 0, search: search || undefined });
   };
 
   const handleNavigateToFolder = (folderId: number | null) => {
     setCurrentFolderId(folderId);
     setPagination((prev) => ({ ...prev, page: 1, offset: 0 }));
     setSelectedItems(new Set());
-    // Update URL - remove folder param if navigating to root
-    if (folderId === null) {
-      router.push("/", { scroll: false });
-    } else {
-      router.push(`/?folder=${folderId}`, { scroll: false });
+    // Update URL - preserve search if present
+    const params = new URLSearchParams();
+    const search = searchParams.get("search");
+    if (folderId !== null) {
+      params.set("folder", folderId.toString());
     }
-    loadData(folderId, { page: 1, offset: 0 });
+    if (search) {
+      params.set("search", search);
+    }
+    const queryString = params.toString();
+    router.push(queryString ? `/?${queryString}` : "/", { scroll: false });
+    loadData(folderId, { page: 1, offset: 0, search: search || undefined });
   };
 
   const handleNavigateUp = () => {
@@ -157,40 +171,66 @@ export default function Home() {
   const handlePageChange = (page: number) => {
     const newOffset = (page - 1) * pagination.limit;
     setPagination((prev) => ({ ...prev, page, offset: newOffset }));
-    // Update URL with page parameter
+    // Update URL with page parameter, preserving folder and search
     const params = new URLSearchParams(searchParams.toString());
     if (currentFolderId) {
       params.set("folder", currentFolderId.toString());
     }
     params.set("page", page.toString());
+    // Preserve search if present
+    const search = searchParams.get("search");
+    if (search) {
+      params.set("search", search);
+    }
     router.push(`/?${params.toString()}`, { scroll: false });
-    loadData(currentFolderId, { page, offset: newOffset });
+    loadData(currentFolderId, {
+      page,
+      offset: newOffset,
+      search: search || undefined,
+    });
   };
 
   const handleOffsetChange = (offset: number) => {
     const newPage = Math.floor(offset / pagination.limit) + 1;
     setPagination((prev) => ({ ...prev, page: newPage, offset }));
-    // Update URL with page parameter
+    // Update URL with page parameter, preserving folder and search
     const params = new URLSearchParams(searchParams.toString());
     if (currentFolderId) {
       params.set("folder", currentFolderId.toString());
     }
     params.set("page", newPage.toString());
+    const search = searchParams.get("search");
+    if (search) {
+      params.set("search", search);
+    }
     router.push(`/?${params.toString()}`, { scroll: false });
-    loadData(currentFolderId, { offset, page: newPage });
+    loadData(currentFolderId, {
+      offset,
+      page: newPage,
+      search: search || undefined,
+    });
   };
 
   const handleLimitChange = (limit: number) => {
     setPagination((prev) => ({ ...prev, limit, page: 1, offset: 0 }));
-    // Update URL with limit parameter
+    // Update URL with limit parameter, preserving folder and search
     const params = new URLSearchParams(searchParams.toString());
     if (currentFolderId) {
       params.set("folder", currentFolderId.toString());
     }
     params.set("limit", limit.toString());
     params.delete("page"); // Reset to page 1
+    const search = searchParams.get("search");
+    if (search) {
+      params.set("search", search);
+    }
     router.push(`/?${params.toString()}`, { scroll: false });
-    loadData(currentFolderId, { limit, page: 1, offset: 0 });
+    loadData(currentFolderId, {
+      limit,
+      page: 1,
+      offset: 0,
+      search: search || undefined,
+    });
   };
 
   // Initial load on mount
@@ -198,21 +238,18 @@ export default function Home() {
     const folderIdFromUrl = searchParams.get("folder");
     const pageFromUrl = searchParams.get("page");
     const limitFromUrl = searchParams.get("limit");
+    const searchFromUrl = searchParams.get("search");
 
     const folderId = folderIdFromUrl ? parseInt(folderIdFromUrl) : null;
     const page = pageFromUrl ? parseInt(pageFromUrl) : 1;
     const limit = limitFromUrl ? parseInt(limitFromUrl) : 10;
     const offset = (page - 1) * limit;
+    const search = searchFromUrl || "";
 
-    if (folderId !== null) {
-      setCurrentFolderId(folderId);
-      setPagination((prev) => ({ ...prev, page, limit, offset }));
-      loadData(folderId, { page, limit, offset });
-    } else {
-      setCurrentFolderId(null);
-      setPagination((prev) => ({ ...prev, page, limit, offset }));
-      loadData(null, { page, limit, offset });
-    }
+    setSearchQuery(search);
+    setCurrentFolderId(folderId);
+    setPagination((prev) => ({ ...prev, page, limit, offset }));
+    loadData(folderId, { page, limit, offset, search: search || undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -223,17 +260,43 @@ export default function Home() {
     const viewType = searchParams.get("view");
     const pageFromUrl = searchParams.get("page");
     const limitFromUrl = searchParams.get("limit");
+    const searchFromUrl = searchParams.get("search");
 
     const folderId = folderIdFromUrl ? parseInt(folderIdFromUrl) : null;
     const page = pageFromUrl ? parseInt(pageFromUrl) : 1;
     const limit = limitFromUrl ? parseInt(limitFromUrl) : pagination.limit;
+    const search = searchFromUrl || "";
+
+    // Update search query from URL if it changed
+    if (search !== searchQuery) {
+      setSearchQuery(search);
+    }
 
     // Update folder ID from URL if it changed
     if (folderId !== currentFolderId) {
       setCurrentFolderId(folderId);
       const offset = (page - 1) * limit;
       setPagination((prev) => ({ ...prev, page, limit, offset }));
-      loadData(folderId, { page, limit, offset });
+      loadData(folderId, { page, limit, offset, search: search || undefined });
+    } else {
+      // If folder didn't change but page/limit/search might have, reload with current folder
+      const offset = (page - 1) * limit;
+      const currentPage = pagination.page;
+      const currentLimit = pagination.limit;
+
+      if (
+        page !== currentPage ||
+        limit !== currentLimit ||
+        search !== searchQuery
+      ) {
+        setPagination((prev) => ({ ...prev, page, limit, offset }));
+        loadData(folderId, {
+          page,
+          limit,
+          offset,
+          search: search || undefined,
+        });
+      }
     }
 
     // Handle document view from URL
@@ -287,16 +350,27 @@ export default function Home() {
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
     setSelectedItems(new Set());
-    if (!query.trim()) {
-      setIsSearchMode(false);
-      setPagination((prev) => ({ ...prev, page: 1, offset: 0 }));
-      loadData(currentFolderId, { page: 1, offset: 0, search: undefined });
-      return;
-    }
 
-    setIsSearchMode(true);
+    // Update URL with search parameter
+    const params = new URLSearchParams();
+    if (currentFolderId) {
+      params.set("folder", currentFolderId.toString());
+    }
+    if (query.trim()) {
+      params.set("search", query.trim());
+    }
+    // Remove page when searching (reset to page 1)
+    params.delete("page");
+
+    const queryString = params.toString();
+    router.push(queryString ? `/?${queryString}` : "/", { scroll: false });
+
     setPagination((prev) => ({ ...prev, page: 1, offset: 0 }));
-    loadData(currentFolderId, { page: 1, offset: 0, search: query });
+    loadData(currentFolderId, {
+      page: 1,
+      offset: 0,
+      search: query.trim() || undefined,
+    });
   };
 
   const handleFormSuccess = () => {
@@ -653,11 +727,12 @@ export default function Home() {
       )}
 
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
+        <div className="mb-4">
+          {/* Header Section */}
           <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl ">Documents</h1>
+            <h1 className="text-3xl font-medium text-gray-900">Documents</h1>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600 dark:text-gray-400">
+              <span className="text-sm text-gray-600">
                 Welcome, {user.name}
               </span>
               <button
@@ -667,13 +742,35 @@ export default function Home() {
                 Logout
               </button>
             </div>
-            {currentFolderId !== null && (
+          </div>
+
+          {/* Search and Action Buttons Section */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-3">
+            <div className="flex-1 w-full sm:w-auto">
+              <SearchBar
+                onSearch={handleSearch}
+                placeholder="Search documents and folders..."
+                initialValue={searchQuery}
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              {selectedItems.size > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isDeleting
+                    ? "Deleting..."
+                    : `Delete Selected (${selectedItems.size})`}
+                </button>
+              )}
               <button
-                onClick={handleNavigateUp}
-                className="px-4 py-2 text-sm font-medium  rounded-lg hover:bg-gray-300  flex items-center gap-2"
+                onClick={() => setShowFileUploadForm(true)}
+                className="px-4 py-2 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium flex items-center justify-center gap-2"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="w-5 h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -682,102 +779,30 @@ export default function Home() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
-                Back
+                Upload files
               </button>
-            )}
-          </div>
-
-          {/* Breadcrumb navigation */}
-          <div className="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-            <button
-              onClick={() => handleNavigateToFolder(null)}
-              className={`flex items-center gap-1.5 transition-colors px-2 py-1 rounded ${
-                currentPath.length === 0
-                  ? "text-gray-900 dark:text-white font-medium"
-                  : "hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
-              }`}
-              title="Home"
-            >
-              <span>Home</span>
-            </button>
-            {currentPath.map((folder) => (
-              <span key={folder.id} className="flex items-center gap-2">
-                <span className="text-gray-400">/</span>
-                <button
-                  onClick={() => handleNavigateToFolder(folder.id)}
-                  className="hover:text-gray-900 dark:hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+              <button
+                onClick={() => setShowFolderForm(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  {folder.name}
-                </button>
-              </span>
-            ))}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center gap-4 mb-6">
-            <div className="flex-1">
-              <SearchBar
-                onSearch={handleSearch}
-                placeholder="Search documents and folders..."
-              />
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              {/* <p className="text-xs text-gray-500 dark:text-gray-400">
-                Drag and drop files here to upload
-              </p> */}
-              <div className="flex gap-3">
-                {selectedItems.size > 0 && (
-                  <button
-                    onClick={handleBulkDelete}
-                    disabled={isDeleting}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isDeleting
-                      ? "Deleting..."
-                      : `Delete Selected (${selectedItems.size})`}
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowFileUploadForm(true)}
-                  className="px-4 py-2 bg-white border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors font-medium flex items-center gap-2"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                  Upload files
-                </button>
-                <button
-                  onClick={() => setShowFolderForm(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                  Add new folder
-                </button>
-              </div>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Add new folder
+              </button>
             </div>
           </div>
 
@@ -793,13 +818,50 @@ export default function Home() {
             </div>
           )}
 
-          {isSearchMode && (
+          {searchQuery && (
             <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-900 rounded ">
-              Showing search results. Clear search to view all documents.
+              Showing search results for &quot;{searchQuery}&quot;. Clear search
+              to view all documents.
             </div>
           )}
         </div>
-
+        {/* Breadcrumb navigation */}
+        <div className="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+          {currentFolderId !== null && (
+            <button
+              onClick={handleNavigateUp}
+              className="flex items-center gap-1.5 transition-colors px-2 py-1 rounded hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <ArrowLeftIcon className="w-4 h-4" />
+              <span>Back</span>
+            </button>
+          )}
+          {currentFolderId !== null && currentPath.length > 0 && (
+            <span className="text-gray-400">|</span>
+          )}
+          <button
+            onClick={() => handleNavigateToFolder(null)}
+            className={`flex items-center gap-1.5 transition-colors px-2 py-1 rounded ${
+              currentPath.length === 0
+                ? "text-gray-900 dark:text-white font-medium"
+                : "hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+            }`}
+            title="Home"
+          >
+            <span>Home</span>
+          </button>
+          {currentPath.map((folder) => (
+            <span key={folder.id} className="flex items-center gap-2">
+              <span className="text-gray-400">/</span>
+              <button
+                onClick={() => handleNavigateToFolder(folder.id)}
+                className="hover:text-gray-900 dark:hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                {folder.name}
+              </button>
+            </span>
+          ))}
+        </div>
         {/* Combined Files and Folders Table */}
         <div className="rounded-lg shadow-sm overflow-hidden">
           <FileTable

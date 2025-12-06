@@ -68,24 +68,6 @@ export default function Pagination({
 
   return (
     <div className="border-t border-gray-200 px-4 py-3">
-      {/* Current Path */}
-      {currentPath.length > 0 && (
-        <div className="mb-3 text-sm text-gray-600 dark:text-gray-400 flex items-center gap-1">
-          <span className="font-medium">Path: </span>
-          <span className="flex items-center gap-1 text-gray-500 dark:text-gray-500">
-            <span>Home</span>
-          </span>
-          {currentPath.map((folder) => (
-            <span key={folder.id} className="flex items-center gap-1">
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-900 dark:text-gray-100">
-                {folder.name}
-              </span>
-            </span>
-          ))}
-        </div>
-      )}
-
       <div className="flex items-center justify-between">
         {/* Rows per page selector */}
         <div className="flex items-center gap-2">
