@@ -5,15 +5,12 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface PaginationProps {
   pagination: PaginationInfo;
-  currentPath: Array<{ id: number; name: string }>;
   onPageChange: (page: number) => void;
-  onOffsetChange: (offset: number) => void;
   onLimitChange: (limit: number) => void;
 }
 
 export default function Pagination({
   pagination,
-  currentPath,
   onPageChange,
   onLimitChange,
 }: PaginationProps) {
